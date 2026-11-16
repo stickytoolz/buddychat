@@ -87,6 +87,7 @@ final class ChatStore: ObservableObject {
             }
             let s = try await AuthService.signUp(screenName: name, password: password)
             session = s
+            myUID = s.uid
             do {
                 try await db.put("screennames/\(key)", s.uid)
             } catch {
