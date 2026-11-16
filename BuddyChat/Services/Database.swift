@@ -1,11 +1,11 @@
 import Foundation
 
 enum DBError: LocalizedError {
-    case denied
+    case denied(String)
     case server(String)
     var errorDescription: String? {
         switch self {
-        case .denied: return "The server said no (permission denied)."
+        case .denied(let detail): return "The server said no (permission denied) — \(detail)"
         case .server(let m): return m
         }
     }
@@ -36,7 +36,11 @@ final class Database {
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let obj = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-        if status == 401 || status == 403 { throw DBError.denied }
+        if status == 401 || status == 403 {
+            let msg = (obj as? [String: Any])?["error"] as? String ?? "no details"
+            let where_ = path.split(separator: "/").first.map(String.init) ?? path
+            throw DBError.denied("\(method) \(where_), \(status): \(msg)")
+        }
         if status >= 400 {
             let msg = (obj as? [String: Any])?["error"] as? String ?? "Server error \(status)"
             throw DBError.server(msg)
