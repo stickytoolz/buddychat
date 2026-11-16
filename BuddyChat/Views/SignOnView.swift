@@ -17,8 +17,6 @@ struct SignOnView: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         RetroField(label: "Screen Name", text: $screenName)
-                        Button("Get a Screen Name") { showSignUp = true }
-                            .font(Retro.body(12)).foregroundStyle(Retro.them).underline()
                         RetroField(label: "Password", text: $password, secure: true)
                         Toggle(isOn: $savePassword) { Text("Save password").font(Retro.body(13)).foregroundStyle(Retro.ink) }
                             .toggleStyle(CheckboxStyle())
@@ -32,6 +30,8 @@ struct SignOnView: View {
                     }
 
                     HStack {
+                        Button("New? Sign Up") { showSignUp = true }
+                            .buttonStyle(RetroButtonStyle())
                         Spacer()
                         if store.phase == .signingOn {
                             ProgressView().padding(.trailing, 8)
@@ -60,7 +60,10 @@ struct SignOnView: View {
         Keychain.set(savePassword ? password.data(using: .utf8) : nil, for: "password")
         Task {
             do { try await store.signIn(screenName: screenName, password: password) }
-            catch { self.error = error.localizedDescription }
+            catch {
+                self.error = error.localizedDescription
+                    + (error.localizedDescription.hasPrefix("Incorrect") ? " New here? Tap \"New? Sign Up\"." : "")
+            }
         }
     }
 }
