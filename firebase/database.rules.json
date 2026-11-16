@@ -1,0 +1,68 @@
+{
+  "rules": {
+    "screennames": {
+      ".read": "auth != null",
+      "$key": {
+        ".write": "auth != null && !data.exists() && newData.val() === auth.uid",
+        ".validate": "$key.matches(/^[a-z0-9]{3,16}$/)"
+      }
+    },
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "buddylists": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "blocks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "inbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$conv": {
+          ".write": "auth != null && ($uid === auth.uid || ($conv.contains(auth.uid) && $conv.contains($uid) && !root.child('blocks/' + $uid + '/' + auth.uid).exists()))"
+        }
+      }
+    },
+    "messages": {
+      "$conv": {
+        ".read": "auth != null && $conv.contains(auth.uid)",
+        "$msg": {
+          ".write": "auth != null && $conv.contains(auth.uid) && !data.exists() && newData.child('from').val() === auth.uid && !root.child('blocks/' + $conv.replace(auth.uid, '').replace('_', '') + '/' + auth.uid).exists()"
+        }
+      }
+    },
+    "typing": {
+      "$conv": {
+        ".read": "auth != null && $conv.contains(auth.uid)",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && $conv.contains(auth.uid)"
+        }
+      }
+    },
+    "rooms": {
+      "$room": {
+        ".read": "auth != null",
+        "messages": {
+          "$msg": {
+            ".write": "auth != null && !data.exists() && newData.child('from').val() === auth.uid"
+          }
+        },
+        "members": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    }
+  }
+}
