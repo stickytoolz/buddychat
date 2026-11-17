@@ -102,7 +102,7 @@ final class ChatStore: ObservableObject {
             let starter = [BuddyGroup(name: "Buddies", members: []), BuddyGroup(name: "Family", members: []),
                            BuddyGroup(name: "Co-Workers", members: [])]
             groups = starter
-            try await saveGroups()
+            try? await saveGroups()   // not worth failing sign-up over
             saveSession()
             lastScreenName = name
             try await finishSignOn(uid: s.uid)
