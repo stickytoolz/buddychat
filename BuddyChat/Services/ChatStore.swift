@@ -20,6 +20,8 @@ final class ChatStore: ObservableObject {
     @Published var banner: String? = nil
     @Published var flash: [String: Date] = [:]   // buddy uid → time they signed on/off (for the door icon)
     @Published var now = Date()
+    @Published var fileMeta: [String: [String: FileMeta]] = [:]   // conv → transfer id → status
+    @Published var transferProgress: [String: Double] = [:]      // transfer id → 0...1 (my uploads/downloads)
 
     let db = Database()
     private var session: AuthSession?
@@ -293,6 +295,14 @@ final class ChatStore: ObservableObject {
                 self.messages[conv] = list
                 if self.openConversation == conv { self.markRead(conv) }
             }
+            streams["f.\(conv)"] = db.listen("filemeta/\(conv)") { [weak self] value in
+                guard let self else { return }
+                var metas: [String: FileMeta] = [:]
+                for (k, v) in (value as? [String: Any]) ?? [:] {
+                    if let d = v as? [String: Any] { metas[k] = FileMeta(id: k, dict: d) }
+                }
+                self.fileMeta[conv] = metas
+            }
             streams["t.\(conv)"] = db.listen("typing/\(conv)") { [weak self] value in
                 guard let self else { return }
                 let nowMs = Date().timeIntervalSince1970 * 1000
@@ -312,21 +322,24 @@ final class ChatStore: ObservableObject {
         streams["t.\(conv)"] = nil
         streams["m.\(conv)"]?.stop()
         streams["m.\(conv)"] = nil
+        streams["f.\(conv)"]?.stop()
+        streams["f.\(conv)"] = nil
     }
 
-    func send(_ text: String, to uid: String, style: TextStyle, auto: Bool = false) async throws {
+    func send(_ text: String, to uid: String, style: TextStyle, auto: Bool = false, file: [String: Any]? = nil) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let conv = conversationID(myUID, uid)
         var msg: [String: Any] = ["from": myUID, "name": myScreenName, "text": trimmed,
                                   "ts": Database.serverTimestamp, "style": style.dict]
         if auto { msg["auto"] = true }
+        if let file { msg["file"] = file }
         try await db.push("messages/\(conv)", msg)
         let preview = String(trimmed.prefix(80))
         try? await db.put("inbox/\(uid)/\(conv)", ["with": myUID, "from": myUID, "ts": Database.serverTimestamp, "preview": preview] as [String: Any])
         try? await db.put("inbox/\(myUID)/\(conv)", ["with": uid, "from": myUID, "ts": Database.serverTimestamp, "preview": preview] as [String: Any])
         try? await db.delete("typing/\(conv)/\(myUID)")
-        if !auto { Sounds.shared.play(.send) }
+        if !auto && file == nil { Sounds.shared.play(.send) }
     }
 
     func userIsTyping(to uid: String) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct IMView: View {
     let buddyID: String
@@ -7,6 +8,9 @@ struct IMView: View {
     @State private var draft = ""
     @State private var showInfo = false
     @State private var sendError: String?
+    @State private var photoItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
+    @State private var showFilePicker = false
     @AppStorage("myStyle") private var styleData: Data = Data()
 
     private var conv: String { conversationID(store.myUID, buddyID) }
@@ -50,6 +54,24 @@ struct IMView: View {
         .onAppear { store.open(with: buddyID) }
         .onDisappear { store.close(conv) }
         .sheet(isPresented: $showInfo) { BuddyInfoView(buddyID: buddyID) }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            photoItem = nil
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                let jpeg = UIImage(data: data)?.jpegData(compressionQuality: 0.85) ?? data
+                let name = "photo-\(Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false)).replacingOccurrences(of: ":", with: "")).jpg"
+                sendFileData(jpeg, name: name)
+            }
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
+            guard let url = try? result.get() else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { sendError = "Couldn't read that file."; return }
+            sendFileData(data, name: url.lastPathComponent)
+        }
     }
 
     private func statusBar(user: UserInfo?, presence: Presence) -> some View {
@@ -97,11 +119,15 @@ struct IMView: View {
             (Text(m.isAuto ? "Auto response from \(name)" : name).font(Retro.titleFont(13))
                 .foregroundColor(mine ? Retro.me : Retro.them)
              + Text(" (\(time)):").font(Retro.body(10)).foregroundColor(Retro.shadow))
-            Text(m.text)
-                .font(m.style.swiftUIFont)
-                .underline(m.style.underline)
-                .foregroundStyle(Color(hex: m.style.color))
-                .textSelection(.enabled)
+            if let offer = m.file {
+                FileCard(offer: offer, message: m, buddyID: buddyID)
+            } else {
+                Text(m.text)
+                    .font(m.style.swiftUIFont)
+                    .underline(m.style.underline)
+                    .foregroundStyle(Color(hex: m.style.color))
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -150,6 +176,14 @@ struct IMView: View {
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            Menu {
+                Button { showPhotoPicker = true } label: { Label("Send a Photo", systemImage: "photo") }
+                Button { showFilePicker = true } label: { Label("Send a File", systemImage: "doc") }
+            } label: {
+                Image(systemName: "paperclip").font(.system(size: 17, weight: .semibold)).foregroundStyle(Retro.ink)
+                    .frame(width: 34, height: 32).background(Retro.face).bevel()
+            }
+            .disabled(store.blocked.contains(buddyID))
             TextField("", text: $draft, axis: .vertical)
                 .lineLimit(1...4)
                 .font(style.swiftUIFont)
@@ -164,6 +198,18 @@ struct IMView: View {
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.blocked.contains(buddyID))
         }
         .padding(.horizontal, 8)
+    }
+
+    private func sendFileData(_ data: Data, name: String) {
+        sendError = nil
+        guard data.count <= ChatStore.maxFileBytes else {
+            sendError = FileTransferError.tooBig.localizedDescription
+            return
+        }
+        Task {
+            do { try await store.sendFile(data, name: name, to: buddyID) }
+            catch { sendError = error.localizedDescription }
+        }
     }
 
     private func send() {

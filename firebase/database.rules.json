@@ -63,6 +63,22 @@
           }
         }
       }
+    },
+    "filemeta": {
+      "$conv": {
+        ".read": "auth != null && $conv.contains(auth.uid)",
+        "$tid": {
+          ".write": "auth != null && $conv.contains(auth.uid)"
+        }
+      }
+    },
+    "filechunks": {
+      "$conv": {
+        ".read": "auth != null && $conv.contains(auth.uid)",
+        "$tid": {
+          ".write": "auth != null && $conv.contains(auth.uid)"
+        }
+      }
     }
   }
 }

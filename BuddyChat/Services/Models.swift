@@ -81,6 +81,7 @@ struct ChatMessage: Identifiable, Equatable {
     let style: TextStyle
     let isAuto: Bool
     let fromName: String?
+    let file: FileOffer?
 
     init(id: String, dict: [String: Any]) {
         self.id = id
@@ -90,6 +91,7 @@ struct ChatMessage: Identifiable, Equatable {
         style = TextStyle(dict: dict["style"] as? [String: Any])
         isAuto = dict["auto"] as? Bool ?? false
         fromName = dict["name"] as? String
+        file = (dict["file"] as? [String: Any]).flatMap(FileOffer.init(dict:))
     }
 
     var date: Date { Date(timeIntervalSince1970: ts / 1000) }
