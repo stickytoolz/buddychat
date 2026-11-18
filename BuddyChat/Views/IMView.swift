@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 
 struct IMView: View {
     let buddyID: String
@@ -8,9 +7,7 @@ struct IMView: View {
     @State private var draft = ""
     @State private var showInfo = false
     @State private var sendError: String?
-    @State private var photoItem: PhotosPickerItem?
-    @State private var showPhotoPicker = false
-    @State private var showFilePicker = false
+    @State private var attach: AttachPicker?
     @AppStorage("myStyle") private var styleData: Data = Data()
 
     private var conv: String { conversationID(store.myUID, buddyID) }
@@ -54,24 +51,6 @@ struct IMView: View {
         .onAppear { store.open(with: buddyID) }
         .onDisappear { store.close(conv) }
         .sheet(isPresented: $showInfo) { BuddyInfoView(buddyID: buddyID) }
-        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
-        .onChange(of: photoItem) { _, item in
-            guard let item else { return }
-            photoItem = nil
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                let jpeg = UIImage(data: data)?.jpegData(compressionQuality: 0.85) ?? data
-                let name = "photo-\(Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false)).replacingOccurrences(of: ":", with: "")).jpg"
-                sendFileData(jpeg, name: name)
-            }
-        }
-        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.item]) { result in
-            guard let url = try? result.get() else { return }
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else { sendError = "Couldn't read that file."; return }
-            sendFileData(data, name: url.lastPathComponent)
-        }
     }
 
     private func statusBar(user: UserInfo?, presence: Presence) -> some View {
@@ -177,8 +156,8 @@ struct IMView: View {
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Menu {
-                Button { showPhotoPicker = true } label: { Label("Send a Photo", systemImage: "photo") }
-                Button { showFilePicker = true } label: { Label("Send a File", systemImage: "doc") }
+                Button { attach = .photo } label: { Label("Send a Photo", systemImage: "photo") }
+                Button { attach = .file } label: { Label("Send a File", systemImage: "doc") }
             } label: {
                 Image(systemName: "paperclip").font(.system(size: 17, weight: .semibold)).foregroundStyle(Retro.ink)
                     .frame(width: 34, height: 32).background(Retro.face).bevel()
@@ -198,6 +177,27 @@ struct IMView: View {
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.blocked.contains(buddyID))
         }
         .padding(.horizontal, 8)
+        .sheet(item: $attach) { kind in
+            switch kind {
+            case .photo:
+                PhotoPicker { data in
+                    attach = nil
+                    if let data {
+                        let stamp = Int(Date().timeIntervalSince1970)
+                        sendFileData(data, name: "photo-\(stamp).jpg")
+                    }
+                }
+                .ignoresSafeArea()
+            case .file:
+                DocumentPicker { url in
+                    attach = nil
+                    guard let url else { return }
+                    guard let data = try? Data(contentsOf: url) else { sendError = "Couldn't read that file."; return }
+                    sendFileData(data, name: url.lastPathComponent)
+                }
+                .ignoresSafeArea()
+            }
+        }
     }
 
     private func sendFileData(_ data: Data, name: String) {

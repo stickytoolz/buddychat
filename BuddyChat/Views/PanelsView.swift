@@ -242,17 +242,19 @@ struct SettingsView: View {
                 }
             }
         }
-        .fileImporter(isPresented: Binding(get: { pickingSlot != nil }, set: { if !$0 { pickingSlot = nil } }),
-                      allowedContentTypes: [.audio]) { result in
-            guard let slot = pickingSlot else { return }
-            do {
-                try Sounds.setCustom(slot, from: try result.get())
-                Sounds.shared.play(slot)
-                refresh += 1
-            } catch {
-                note = "Couldn't use that file: \(error.localizedDescription)"
+        .sheet(item: $pickingSlot) { slot in
+            DocumentPicker(types: [.audio]) { url in
+                pickingSlot = nil
+                guard let url else { return }
+                do {
+                    try Sounds.setCustom(slot, from: url)
+                    Sounds.shared.play(slot)
+                    refresh += 1
+                } catch {
+                    note = "Couldn't use that file: \(error.localizedDescription)"
+                }
             }
-            pickingSlot = nil
+            .ignoresSafeArea()
         }
         .onChange(of: logoItem) { _, item in
             guard let item else { return }
