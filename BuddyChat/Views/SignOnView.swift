@@ -83,7 +83,7 @@ struct SignUpView: View {
             RetroWindow(title: "Get a Screen Name", icon: "person.badge.plus") {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Pick your screen name. This is the name your buddies will see and use to add you.")
+                        Text("Pick your screen name. This is the name your homies will see and use to add you.")
                             .font(Retro.body(13)).foregroundStyle(Retro.ink)
                         RetroField(label: "Screen Name (3–16 letters or numbers)", text: $screenName)
                         RetroField(label: "Password (at least 6 characters)", text: $password, secure: true)

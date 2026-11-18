@@ -51,16 +51,16 @@ struct PounceView: View {
     }
 
     var body: some View {
-        Pane(title: "Buddy Pounce", icon: "bell.badge.fill") {
+        Pane(title: "Homie Pounce", icon: "bell.badge.fill") {
             VStack(alignment: .leading, spacing: 10) {
-                hint("Get told, or send a message automatically, when a buddy signs on or comes back.")
+                hint("Get told, or send a message automatically, when a homie signs on or comes back.")
 
                 sectionTitle("New Pounce")
                 Menu {
                     ForEach(buddies, id: \.self) { uid in Button(store.name(uid)) { buddy = uid } }
                 } label: {
                     HStack {
-                        Text(buddy.map { store.name($0) } ?? "Choose a buddy…").font(Retro.body(13)).foregroundStyle(Retro.ink)
+                        Text(buddy.map { store.name($0) } ?? "Choose a homie…").font(Retro.body(13)).foregroundStyle(Retro.ink)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 10)).foregroundStyle(Retro.ink)
                     }
@@ -281,7 +281,7 @@ struct CatcherView: View {
     var body: some View {
         Pane(title: "IM Catcher", icon: "tray.full.fill") {
             VStack(alignment: .leading, spacing: 10) {
-                hint("IMs from people who aren't on your Buddy List wait here, so strangers can't pop up windows on you.")
+                hint("IMs from people who aren't on your Homie List wait here, so strangers can't pop up windows on you.")
                 Toggle(isOn: Binding(get: { store.prefs.imCatcher }, set: { store.prefs.imCatcher = $0; store.savePrefs() })) {
                     Text("Catch IMs from strangers").font(Retro.body(12)).foregroundStyle(Retro.ink)
                 }
@@ -375,8 +375,8 @@ struct InviteBuddiesSheet: View {
     var body: some View {
         RetroSheet(title: "Invite to \(room)", icon: "envelope.fill") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Buddies who are online").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
-                if online.isEmpty { hint("None of your buddies are online right now.") }
+                Text("Homies who are online").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
+                if online.isEmpty { hint("None of your homies are online right now.") }
                 ForEach(online, id: \.self) { uid in
                     Toggle(isOn: Binding(get: { picked.contains(uid) },
                                          set: { on in if on { picked.insert(uid) } else { picked.remove(uid) } })) {

@@ -240,7 +240,7 @@ enum WindowTitle {
     @MainActor
     static func text(_ kind: WindowKind, store: ChatStore) -> String {
         switch kind {
-        case .buddyList: return "\(store.myScreenName)'s Buddy List"
+        case .buddyList: return "\(store.myScreenName)'s Homie List"
         case .im(let u): return "\(store.name(u)) - IM"
         case .info(let u): return "Info: \(store.name(u))"
         case .room(let r): return "Chat: \(r)"
@@ -248,9 +248,9 @@ enum WindowTitle {
         case .rooms: return "Chat Rooms"
         case .away: return "Away Message"
         case .profile: return "My Profile"
-        case .addBuddy: return "Add Buddy"
+        case .addBuddy: return "Add Homie"
         case .setup: return "Setup"
-        case .pounce: return "Buddy Pounce"
+        case .pounce: return "Homie Pounce"
         case .directory: return "Member Directory"
         case .catcher: return "IM Catcher"
         case .invites: return "Chat Invitations"
@@ -268,7 +268,7 @@ struct TaskbarView: View {
             Button { wm.open(.buddyList) } label: {
                 HStack(spacing: 4) {
                     BuddyMascot(size: 22)
-                    Text("Buddies").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
+                    Text("Homies").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
                 }
                 .padding(.horizontal, 6).frame(height: 30).background(Retro.face).bevel()
             }

@@ -8,8 +8,8 @@ final class Sounds {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .signOn: return "Buddy signs on"
-            case .signOff: return "Buddy signs off"
+            case .signOn: return "Homie signs on"
+            case .signOff: return "Homie signs off"
             case .receive: return "Message received"
             case .send: return "Message sent"
             }

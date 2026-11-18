@@ -186,7 +186,7 @@ struct BuddyListPane: View {
             if away != nil {
                 Button { readingAway.insert(uid) } label: { Label("Read Away Message", systemImage: "note.text") }
             }
-            Button { store.pounceFor = uid; wm.open(.pounce) } label: { Label("Buddy Pounce…", systemImage: "bell.badge") }
+            Button { store.pounceFor = uid; wm.open(.pounce) } label: { Label("Homie Pounce…", systemImage: "bell.badge") }
             Button { wm.open(.history(uid)) } label: { Label("Message History", systemImage: "clock.arrow.circlepath") }
             Menu("Move to Group") {
                 ForEach(store.groups) { g in
@@ -196,7 +196,7 @@ struct BuddyListPane: View {
             Button(store.blocked.contains(uid) ? "Unblock" : "Block") {
                 Task { await store.setBlocked(uid, !store.blocked.contains(uid)) }
             }
-            Button("Remove Buddy", role: .destructive) { Task { await store.removeBuddy(uid) } }
+            Button("Remove Homie", role: .destructive) { Task { await store.removeBuddy(uid) } }
         }
     }
 
@@ -218,9 +218,9 @@ struct BuddyListPane: View {
             toolButton("Chat", "person.3.fill") { wm.open(.rooms) }
             toolButton("Away", "note.text") { wm.open(.away) }
             Menu {
-                Button { wm.open(.addBuddy) } label: { Label("Add Buddy", systemImage: "person.badge.plus") }
+                Button { wm.open(.addBuddy) } label: { Label("Add Homie", systemImage: "person.badge.plus") }
                 Button { wm.open(.profile) } label: { Label("My Profile & Icon", systemImage: "person.text.rectangle") }
-                Button { store.pounceFor = nil; wm.open(.pounce) } label: { Label("Buddy Pounce", systemImage: "bell.badge") }
+                Button { store.pounceFor = nil; wm.open(.pounce) } label: { Label("Homie Pounce", systemImage: "bell.badge") }
                 Button { wm.open(.directory) } label: { Label("Member Directory", systemImage: "magnifyingglass") }
                 Button { wm.open(.catcher) } label: {
                     Label(store.caught.isEmpty ? "IM Catcher" : "IM Catcher (\(store.caught.count))", systemImage: "tray.full")

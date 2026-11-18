@@ -152,7 +152,7 @@ extension ChatStore {
             if pounce.openIM { windows.open(.im(uid)) }
             let msg = pounce.sendMessage.trimmingCharacters(in: .whitespacesAndNewlines)
             if !msg.isEmpty { Task { try? await send(msg, to: uid, style: TextStyle()) } }
-            banner = "Buddy Pounce: \(name(uid)) \(after == .offline ? "signed off" : "is here")!"
+            banner = "Homie Pounce: \(name(uid)) \(after == .offline ? "signed off" : "is here")!"
         }
         let oneShots = prefs.pounces.filter { fired.contains($0.id) && !$0.keep }.map(\.id)
         if !oneShots.isEmpty {

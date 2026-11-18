@@ -112,7 +112,7 @@ final class ChatStore: ObservableObject {
                 "screenName": name, "profile": "", "away": "",
                 "signedOn": true, "lastSeen": Database.serverTimestamp,
             ] as [String: Any])
-            let starter = [BuddyGroup(name: "Buddies", members: []), BuddyGroup(name: "Family", members: []),
+            let starter = [BuddyGroup(name: "Homies", members: []), BuddyGroup(name: "Family", members: []),
                            BuddyGroup(name: "Co-Workers", members: [])]
             groups = starter
             try? await saveGroups()   // not worth failing sign-up over
@@ -154,8 +154,13 @@ final class ChatStore: ObservableObject {
            let data = raw.data(using: .utf8),
            let decoded = try? JSONDecoder().decode([BuddyGroup].self, from: data) {
             groups = decoded
+            // Contacts are called homies now; rename the old starter group once.
+            if let i = groups.firstIndex(where: { $0.name == "Buddies" }) {
+                groups[i].name = "Homies"
+                try? await saveGroups()
+            }
         } else if groups.isEmpty {
-            groups = [BuddyGroup(name: "Buddies", members: [])]
+            groups = [BuddyGroup(name: "Homies", members: [])]
         }
         try await db.patch("users/\(uid)", ["signedOn": true, "lastSeen": Database.serverTimestamp, "idleSince": NSNull()])
         startStreams()

@@ -113,7 +113,7 @@ struct ProfileEditorView: View {
     var body: some View {
         Pane(title: "My Profile", icon: "person.text.rectangle") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Buddy Icon").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
+                Text("Homie Icon").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
                 HStack(spacing: 10) {
                     BuddyIcon(uid: store.myUID, size: 56)
                     VStack(alignment: .leading, spacing: 6) {
@@ -127,10 +127,10 @@ struct ProfileEditorView: View {
                     }
                     if working { ProgressView() }
                 }
-                Text("Shows next to your name on buddies' lists and in IMs.").font(Retro.body(10)).foregroundStyle(Retro.dark)
+                Text("Shows next to your name on homies' lists and in IMs.").font(Retro.body(10)).foregroundStyle(Retro.dark)
 
                 Text("Profile").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
-                Text("What buddies see when they Get Info on you. Links work.").font(Retro.body(11)).foregroundStyle(Retro.ink)
+                Text("What homies see when they Get Info on you. Links work.").font(Retro.body(11)).foregroundStyle(Retro.ink)
                 TextEditor(text: $text)
                     .font(Retro.body(14)).foregroundStyle(Retro.ink)
                     .scrollContentBackground(.hidden)
@@ -185,9 +185,9 @@ struct AddBuddyView: View {
     @State private var message: String?
 
     var body: some View {
-        Pane(title: "Add a Buddy", icon: "person.badge.plus") {
+        Pane(title: "Add a Homie", icon: "person.badge.plus") {
             VStack(alignment: .leading, spacing: 14) {
-                RetroField(label: "Buddy's Screen Name", text: $screenName)
+                RetroField(label: "Homie's Screen Name", text: $screenName)
                 Text("Add to group").font(Retro.body(12)).foregroundStyle(Retro.ink)
                 Picker("Group", selection: $groupID) {
                     ForEach(store.groups) { g in Text(g.name).tag(Optional(g.id)) }
@@ -198,7 +198,7 @@ struct AddBuddyView: View {
                 HStack {
                     Button("Send IM") { sendIM() }.buttonStyle(RetroButtonStyle()).disabled(screenName.isEmpty)
                     Spacer()
-                    Button("Add Buddy") { add() }.buttonStyle(RetroButtonStyle(bold: true)).disabled(screenName.isEmpty)
+                    Button("Add Homie") { add() }.buttonStyle(RetroButtonStyle(bold: true)).disabled(screenName.isEmpty)
                 }
 
                 Divider().padding(.vertical, 6)
@@ -240,7 +240,7 @@ struct AddBuddyView: View {
             }
             guard uid != store.myUID else { message = "That's you!"; return }
             if let g = groupID ?? store.groups.first?.id { await store.addBuddy(uid, toGroup: g) }
-            message = "Added \(store.name(uid)) to your Buddy List."
+            message = "Added \(store.name(uid)) to your Homie List."
             screenName = ""
         }
     }
@@ -327,7 +327,7 @@ struct SettingsView: View {
                                 .buttonStyle(RetroButtonStyle())
                         }
                     }
-                    Text("Replaces the BuddyChat buddy on the sign-on screen and taskbar.").font(Retro.body(11)).foregroundStyle(Retro.dark)
+                    Text("Replaces the BuddyChat mascot on the sign-on screen and taskbar.").font(Retro.body(11)).foregroundStyle(Retro.dark)
                 }
 
                 if let note { Text(note).font(Retro.body(12)).foregroundStyle(.red) }
@@ -398,7 +398,7 @@ struct RoomsView: View {
     var body: some View {
         Pane(title: "Chat Rooms", icon: "person.3.fill") {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Type a room name to join it. If it doesn't exist yet, it's created. Use Invite inside the room to bring buddies in.")
+                Text("Type a room name to join it. If it doesn't exist yet, it's created. Use Invite inside the room to bring homies in.")
                     .font(Retro.body(12)).foregroundStyle(Retro.ink)
                 RetroField(label: "Room name", text: $room)
                     .onSubmit(join)

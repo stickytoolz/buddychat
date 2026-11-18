@@ -110,7 +110,7 @@ struct IMPane: View {
                 .opacity(store.alreadyWarned(buddyID) ? 0.5 : 1)
             Menu {
                 Button { store.windows.open(.history(buddyID)) } label: { Label("Message History", systemImage: "clock.arrow.circlepath") }
-                Button { store.pounceFor = buddyID; store.windows.open(.pounce) } label: { Label("Buddy Pounce…", systemImage: "bell.badge") }
+                Button { store.pounceFor = buddyID; store.windows.open(.pounce) } label: { Label("Homie Pounce…", systemImage: "bell.badge") }
                 Menu {
                     ForEach(IMBackground.allCases) { bg in
                         Button { backgroundRaw = bg.rawValue } label: {
@@ -415,7 +415,7 @@ struct BuddyInfoPane: View {
                     }
                 }
 
-                box("Nickname on My Buddy List") {
+                box("Nickname on My Homie List") {
                     HStack {
                         TextField(store.realName(buddyID), text: $alias)
                             .font(Retro.body(13)).foregroundStyle(Retro.ink)
@@ -425,7 +425,7 @@ struct BuddyInfoPane: View {
                     }
                 }
 
-                box("Sign-On Sound for This Buddy") {
+                box("Sign-On Sound for This Homie") {
                     HStack {
                         Text(Sounds.buddySoundURL(buddyID) != nil ? "Custom sound" : "Default door sound")
                             .font(Retro.body(12)).foregroundStyle(Retro.ink).id(soundStamp)
@@ -449,7 +449,7 @@ struct BuddyInfoPane: View {
                     }
                     .buttonStyle(RetroButtonStyle())
                     if !isBuddy {
-                        Button("Add Buddy") {
+                        Button("Add Homie") {
                             if let g = store.groups.first?.id { Task { await store.addBuddy(buddyID, toGroup: g) } }
                         }
                         .buttonStyle(RetroButtonStyle())

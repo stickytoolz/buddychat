@@ -178,7 +178,7 @@ struct AccountPrefs: Codable, Equatable {
     enum Privacy: String, Codable, CaseIterable, Identifiable {
         case everyone, buddiesOnly
         var id: String { rawValue }
-        var label: String { self == .everyone ? "Anyone can IM me" : "Only people on my Buddy List" }
+        var label: String { self == .everyone ? "Anyone can IM me" : "Only people on my Homie List" }
     }
     var aliases: [String: String] = [:]
     var pounces: [BuddyPounce] = []
