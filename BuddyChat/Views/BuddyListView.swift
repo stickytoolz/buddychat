@@ -1,77 +1,59 @@
 import SwiftUI
 
-struct BuddyListView: View {
+/// The inside of the Buddy List window, which sits docked on the side of the screen.
+struct BuddyListPane: View {
     @EnvironmentObject var store: ChatStore
-    @State private var chatWith: ChatTarget?
-    @State private var infoFor: ChatTarget?
-    @State private var sheet: SheetKind?
     @State private var showOffline = true
+    @State private var readingAway: Set<String> = []
 
-    enum SheetKind: String, Identifiable {
-        case away, profile, addBuddy, settings, rooms
-        var id: String { rawValue }
-    }
+    private var wm: WindowManager { store.windows }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                RetroWindow(title: "\(store.myScreenName)'s Buddy List", icon: "list.bullet.rectangle.fill",
-                            trailing: {
-                                Button { Task { await store.signOff() } } label: {
-                                    Text("Sign Off").font(Retro.body(11)).foregroundStyle(.white)
-                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(.white.opacity(0.7)))
-                                }
-                            }) {
-                    VStack(spacing: 0) {
-                        header
-                        list
-                        toolbar
-                    }
-                }
-            }
-            .padding(10)
-            .background(Color(red: 0.0, green: 0.5, blue: 0.5).ignoresSafeArea())
-            .navigationDestination(item: $chatWith) { target in
-                IMView(buddyID: target.id)
-            }
-            .sheet(item: $infoFor) { target in BuddyInfoView(buddyID: target.id) }
-            .sheet(item: $sheet) { kind in
-                switch kind {
-                case .away: AwayMessageView()
-                case .profile: ProfileEditorView()
-                case .addBuddy: AddBuddyView()
-                case .settings: SettingsView()
-                case .rooms: RoomsView()
-                }
-            }
-            .overlay(alignment: .top) { bannerView }
-            .toolbar(.hidden, for: .navigationBar)
+        VStack(spacing: 0) {
+            header
+            list
+            toolbar
         }
     }
 
-    // MARK: Pieces
+    // MARK: You
 
     private var header: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                BuddyMascot(size: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(store.myScreenName).font(Retro.titleFont(15)).foregroundStyle(Retro.ink)
-                    if let away = store.awayMessage {
-                        Text("Away: \(away)").font(Retro.body(11)).foregroundStyle(Retro.dark).lineLimit(1)
-                    } else {
-                        Text("Available").font(Retro.body(11)).foregroundStyle(.green)
+        Button { wm.open(.profile) } label: {
+            HStack(spacing: 6) {
+                if store.icons[store.myUID] != nil {
+                    BuddyIcon(uid: store.myUID, size: 34)
+                } else {
+                    BuddyMascot(size: 34)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(store.myScreenName).font(Retro.titleFont(12)).foregroundStyle(Retro.ink).lineLimit(1)
+                    Group {
+                        if store.invisible {
+                            Text("Invisible").foregroundStyle(Retro.dark)
+                        } else if store.awayMessage != nil {
+                            Text("Away").foregroundStyle(.orange)
+                        } else {
+                            Text("Available").foregroundStyle(.green)
+                        }
+                    }
+                    .font(Retro.body(10))
+                    let level = store.warningLevel(store.myUID)
+                    if level > 0 {
+                        Text("Warning: \(level)%").font(Retro.body(9)).foregroundStyle(.red)
                     }
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
-            .padding(8)
+            .padding(5)
             .background(Retro.field)
             .bevel(sunken: true)
         }
-        .padding(8)
+        .buttonStyle(.plain)
+        .padding(5)
     }
+
+    // MARK: Buddies
 
     private var list: some View {
         ScrollView {
@@ -85,15 +67,19 @@ struct BuddyListView: View {
                 }
                 offlineSection
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 3)
         }
         .background(Retro.field)
         .bevel(sunken: true)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 5)
+    }
+
+    private func isShown(_ uid: String) -> Bool {
+        (store.users[uid]?.presence(now: store.now) ?? .offline) != .offline || store.flash[uid] != nil
     }
 
     private func onlineMembers(_ g: BuddyGroup) -> [String] {
-        g.members.filter { (store.users[$0]?.presence(now: store.now) ?? .offline) != .offline || store.flash[$0] != nil }
+        g.members.filter(isShown)
             .sorted { store.name($0).localizedCaseInsensitiveCompare(store.name($1)) == .orderedAscending }
     }
 
@@ -113,26 +99,25 @@ struct BuddyListView: View {
     }
 
     private var offlineSection: some View {
-        let offline = store.groups.flatMap(\.members).filter {
-            (store.users[$0]?.presence(now: store.now) ?? .offline) == .offline && store.flash[$0] == nil
-        }
+        let offline = store.groups.flatMap(\.members).filter { !isShown($0) }
         return VStack(alignment: .leading, spacing: 0) {
             groupHeader(name: "Offline", online: offline.count, total: offline.count, collapsed: !showOffline) { showOffline.toggle() }
             if showOffline {
-                ForEach(offline.sorted { store.name($0) < store.name($1) }, id: \.self) { uid in buddyRow(uid) }
+                ForEach(offline.sorted { store.name($0).localizedCaseInsensitiveCompare(store.name($1)) == .orderedAscending },
+                        id: \.self) { uid in buddyRow(uid) }
             }
         }
     }
 
     private func groupHeader(name: String, online: Int, total: Int, collapsed: Bool, toggle: @escaping () -> Void) -> some View {
         Button(action: toggle) {
-            HStack(spacing: 4) {
-                Image(systemName: collapsed ? "arrowtriangle.right.fill" : "arrowtriangle.down.fill").font(.system(size: 9))
-                Text("\(name) (\(online)/\(total))").font(Retro.titleFont(13))
-                Spacer()
+            HStack(spacing: 3) {
+                Image(systemName: collapsed ? "arrowtriangle.right.fill" : "arrowtriangle.down.fill").font(.system(size: 8))
+                Text("\(name) (\(online)/\(total))").font(Retro.titleFont(11)).lineLimit(1)
+                Spacer(minLength: 0)
             }
             .foregroundStyle(Retro.ink)
-            .padding(.horizontal, 8).padding(.vertical, 5)
+            .padding(.horizontal, 5).padding(.vertical, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -142,33 +127,67 @@ struct BuddyListView: View {
         let user = store.users[uid]
         let presence = user?.presence(now: store.now) ?? .offline
         let flashing = store.flash[uid] != nil
-        return Button { chatWith = ChatTarget(id: uid) } label: {
-            HStack(spacing: 6) {
-                if flashing {
-                    Image(systemName: presence == .offline ? "door.left.hand.closed" : "door.left.hand.open")
-                        .font(.system(size: 12)).foregroundStyle(presence == .offline ? .red : .green)
-                        .frame(width: 18)
-                } else {
-                    presenceIcon(presence).frame(width: 18)
+        let away = presence == .away ? user?.awayMessage : nil
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Button { wm.open(.im(uid)) } label: {
+                    HStack(spacing: 4) {
+                        if flashing {
+                            Image(systemName: presence == .offline ? "door.left.hand.closed" : "door.left.hand.open")
+                                .font(.system(size: 11)).foregroundStyle(presence == .offline ? .red : .green)
+                                .frame(width: 14)
+                        } else if away == nil {
+                            presenceIcon(presence).frame(width: 14)
+                        }
+                        if store.icons[uid] != nil { BuddyIcon(uid: uid, size: 16) }
+                        Text(store.name(uid))
+                            .font(presence == .idle || presence == .offline ? Retro.body(12).italic() : Retro.body(12))
+                            .foregroundStyle(presence == .offline ? Retro.shadow : Retro.ink)
+                            .lineLimit(1)
+                        if presence == .idle, let m = user?.idleMinutes(now: store.now) {
+                            Text("(\(m))").font(Retro.body(9)).foregroundStyle(Retro.shadow)
+                        }
+                        Spacer(minLength: 0)
+                        if store.unreadFrom(uid) {
+                            Image(systemName: "envelope.fill").font(.system(size: 11)).foregroundStyle(.orange)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
-                Text(store.name(uid))
-                    .font(presence == .idle || presence == .offline ? Retro.body(14).italic() : Retro.body(14))
-                    .foregroundStyle(presence == .offline ? Retro.shadow : Retro.ink)
-                if presence == .idle, let m = user?.idleMinutes(now: store.now) {
-                    Text("(idle \(m))").font(Retro.body(11)).foregroundStyle(Retro.shadow)
-                }
-                Spacer()
-                if store.unreadFrom(uid) {
-                    Image(systemName: "envelope.fill").foregroundStyle(.orange)
+                .buttonStyle(.plain)
+            }
+            .overlay(alignment: .leading) {
+                // Tap the away note to read their away message right here.
+                if away != nil && !flashing {
+                    Button {
+                        if readingAway.contains(uid) { readingAway.remove(uid) } else { readingAway.insert(uid) }
+                    } label: {
+                        Image(systemName: "note.text").font(.system(size: 12)).foregroundStyle(.orange)
+                            .frame(width: 18, height: 18).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: -2)
                 }
             }
-            .padding(.leading, 22).padding(.trailing, 8).padding(.vertical, 4)
-            .contentShape(Rectangle())
+            .padding(.leading, away != nil && !flashing ? 18 : 0)
+            if let away, readingAway.contains(uid) {
+                LinkedText(text: store.expandAway(away, for: nil), size: 11)
+                    .padding(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(red: 1, green: 1, blue: 0.85))
+                    .bevel()
+                    .onTapGesture { readingAway.remove(uid) }
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.leading, 12).padding(.trailing, 5).padding(.vertical, 3)
         .contextMenu {
-            Button { chatWith = ChatTarget(id: uid) } label: { Label("Send IM", systemImage: "bubble.left") }
-            Button { infoFor = ChatTarget(id: uid) } label: { Label("Get Info", systemImage: "info.circle") }
+            Button { wm.open(.im(uid)) } label: { Label("Send IM", systemImage: "bubble.left") }
+            Button { wm.open(.info(uid)) } label: { Label("Get Info / Nickname", systemImage: "info.circle") }
+            if away != nil {
+                Button { readingAway.insert(uid) } label: { Label("Read Away Message", systemImage: "note.text") }
+            }
+            Button { store.pounceFor = uid; wm.open(.pounce) } label: { Label("Buddy Pounce…", systemImage: "bell.badge") }
+            Button { wm.open(.history(uid)) } label: { Label("Message History", systemImage: "clock.arrow.circlepath") }
             Menu("Move to Group") {
                 ForEach(store.groups) { g in
                     Button(g.name) { Task { await store.addBuddy(uid, toGroup: g.id) } }
@@ -184,54 +203,62 @@ struct BuddyListView: View {
     @ViewBuilder
     private func presenceIcon(_ p: Presence) -> some View {
         switch p {
-        case .online: Image(systemName: "person.fill").font(.system(size: 12)).foregroundStyle(.green)
-        case .away: Image(systemName: "note.text").font(.system(size: 12)).foregroundStyle(.orange)
-        case .idle: Image(systemName: "moon.zzz.fill").font(.system(size: 11)).foregroundStyle(.gray)
-        case .offline: Image(systemName: "person").font(.system(size: 12)).foregroundStyle(.gray)
+        case .online: Image(systemName: "person.fill").font(.system(size: 11)).foregroundStyle(.green)
+        case .away: Image(systemName: "note.text").font(.system(size: 11)).foregroundStyle(.orange)
+        case .idle: Image(systemName: "moon.zzz.fill").font(.system(size: 10)).foregroundStyle(.gray)
+        case .offline: Image(systemName: "person").font(.system(size: 11)).foregroundStyle(.gray)
         }
     }
 
+    // MARK: Buttons along the bottom
+
     private var toolbar: some View {
-        HStack(spacing: 0) {
-            toolButton("IM", "bubble.left.fill") { sheet = .addBuddy }
-            toolButton("Chat", "person.3.fill") { sheet = .rooms }
-            toolButton("Away", "note.text") { sheet = .away }
-            toolButton("Profile", "person.text.rectangle") { sheet = .profile }
-            toolButton("Setup", "gearshape.fill") { sheet = .settings }
+        HStack(spacing: 3) {
+            toolButton("IM", "bubble.left.fill") { wm.open(.addBuddy) }
+            toolButton("Chat", "person.3.fill") { wm.open(.rooms) }
+            toolButton("Away", "note.text") { wm.open(.away) }
+            Menu {
+                Button { wm.open(.addBuddy) } label: { Label("Add Buddy", systemImage: "person.badge.plus") }
+                Button { wm.open(.profile) } label: { Label("My Profile & Icon", systemImage: "person.text.rectangle") }
+                Button { store.pounceFor = nil; wm.open(.pounce) } label: { Label("Buddy Pounce", systemImage: "bell.badge") }
+                Button { wm.open(.directory) } label: { Label("Member Directory", systemImage: "magnifyingglass") }
+                Button { wm.open(.catcher) } label: {
+                    Label(store.caught.isEmpty ? "IM Catcher" : "IM Catcher (\(store.caught.count))", systemImage: "tray.full")
+                }
+                Button { wm.open(.invites) } label: {
+                    Label(store.invites.isEmpty ? "Chat Invitations" : "Chat Invitations (\(store.invites.count))", systemImage: "envelope.open")
+                }
+                Button { wm.open(.privacy) } label: { Label("Privacy", systemImage: "lock") }
+                Button { Task { await store.setInvisible(!store.invisible) } } label: {
+                    Label(store.invisible ? "Become Visible" : "Go Invisible", systemImage: store.invisible ? "eye" : "eye.slash")
+                }
+                Button { wm.open(.setup) } label: { Label("Setup", systemImage: "gearshape") }
+                Divider()
+                Button(role: .destructive) { Task { await store.signOff() } } label: {
+                    Label("Sign Off", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } label: {
+                toolLabel("More", "ellipsis.circle.fill", badge: !store.caught.isEmpty || !store.invites.isEmpty)
+            }
         }
-        .padding(8)
+        .padding(5)
     }
 
     private func toolButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: icon).font(.system(size: 18))
-                Text(title).font(Retro.body(10))
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(RetroButtonStyle())
+        Button(action: action) { toolLabel(title, icon) }.buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private var bannerView: some View {
-        if let text = store.banner {
-            Text(text)
-                .font(Retro.body(13)).foregroundStyle(Retro.ink).lineLimit(2)
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(red: 1, green: 1, blue: 0.85)).bevel()
-                .padding(.horizontal, 16).padding(.top, 4)
-                .onTapGesture {
-                    if let entry = store.inbox.values.max(by: { $0.ts < $1.ts }) { chatWith = ChatTarget(id: entry.with) }
-                    store.banner = nil
-                }
-                .task {
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
-                    store.banner = nil
-                }
-                .transition(.move(edge: .top))
+    private func toolLabel(_ title: String, _ icon: String, badge: Bool = false) -> some View {
+        VStack(spacing: 1) {
+            Image(systemName: icon).font(.system(size: 14))
+            Text(title).font(Retro.body(9))
+        }
+        .foregroundStyle(Retro.ink)
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .background(Retro.face)
+        .bevel()
+        .overlay(alignment: .topTrailing) {
+            if badge { Circle().fill(.red).frame(width: 8, height: 8).padding(3) }
         }
     }
 }
-
-struct ChatTarget: Identifiable, Hashable { let id: String }

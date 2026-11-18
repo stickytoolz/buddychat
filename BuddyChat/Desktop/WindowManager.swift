@@ -42,8 +42,8 @@ enum WindowKind: Hashable {
     /// Starting size for each kind of window.
     var preferredSize: CGSize {
         switch self {
-        case .buddyList: return CGSize(width: 190, height: 600)
-        case .im, .room: return CGSize(width: 320, height: 400)
+        case .buddyList: return CGSize(width: 175, height: 600)
+        case .im, .room: return CGSize(width: 330, height: 330)
         case .info, .history: return CGSize(width: 300, height: 380)
         default: return CGSize(width: 320, height: 430)
         }
@@ -155,7 +155,9 @@ final class WindowManager: ObservableObject {
             return CGRect(x: desk.width - w - 4, y: 4, width: w, height: desk.height - 8)
         }
         let w = min(size.width, desk.width - 16)
-        let h = min(size.height, desk.height - 16)
+        var h = min(size.height, desk.height - 16)
+        if case .im = kind { h = min(w, h) }      // IM and chat windows start out square
+        if case .room = kind { h = min(w, h) }
         let step = CGFloat(cascade % 6) * 22
         cascade += 1
         return CGRect(x: 8 + step, y: 8 + step, width: w, height: h)

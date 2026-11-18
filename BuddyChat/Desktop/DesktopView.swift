@@ -19,6 +19,7 @@ enum Wallpaper: String, CaseIterable, Identifiable {
 
 struct WallpaperView: View {
     @AppStorage("wallpaper") private var wallpaper: Wallpaper = .teal
+    @AppStorage("wallpaperStamp") private var stamp = 0   // bumped when you pick a new picture
 
     var body: some View {
         GeometryReader { g in
@@ -53,7 +54,7 @@ struct WallpaperView: View {
                     }
                 }
             case .custom:
-                if let img = UIImage(contentsOfFile: Wallpaper.customURL.path) {
+                if stamp >= 0, let img = UIImage(contentsOfFile: Wallpaper.customURL.path) {
                     Image(uiImage: img).resizable().scaledToFill().frame(width: g.size.width, height: g.size.height).clipped()
                 } else {
                     Color(red: 0.0, green: 0.5, blue: 0.5)
@@ -75,11 +76,14 @@ struct DesktopView: View {
             let desk = CGSize(width: g.size.width, height: g.size.height - Self.taskbarHeight)
             ZStack(alignment: .topLeading) {
                 WallpaperView()
-                ForEach(wm.windows.filter { !$0.minimized }.sorted { $0.z < $1.z }) { w in
+                // Minimized windows stay alive (so drafts and chat rooms keep going), just hidden.
+                ForEach(wm.windows.sorted { $0.z < $1.z }) { w in
                     let f = wm.displayFrame(w)
-                    DeskWindowView(window: w, wm: wm) { WindowContent(kind: w.kind) }
+                    DeskWindowView(window: w, wm: wm) { WindowContent(kind: w.kind, minimized: w.minimized) }
                         .frame(width: f.width, height: f.height)
                         .offset(x: f.minX, y: f.minY)
+                        .opacity(w.minimized ? 0 : 1)
+                        .allowsHitTesting(!w.minimized)
                         .environment(\.closeWindow, { wm.close(w.id) })
                 }
                 if let text = store.banner {

@@ -2,7 +2,18 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
-/// Shared frame for the smaller pop-up windows.
+/// The inside of a desktop window: the window supplies the title bar, this just scrolls.
+struct Pane<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollView { content().padding(12) }
+    }
+}
+
+/// Shared frame for real pop-up sheets (pickers and such).
 struct RetroSheet<Content: View>: View {
     let title: String
     let icon: String
@@ -23,12 +34,12 @@ struct RetroSheet<Content: View>: View {
 
 struct AwayMessageView: View {
     @EnvironmentObject var store: ChatStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeWindow) private var dismiss
     @State private var text = ""
     @State private var saved: [String] = []
 
     var body: some View {
-        RetroSheet(title: "Away Message", icon: "note.text") {
+        Pane(title: "Away Message", icon: "note.text") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Write your away message. People who IM you get it as an auto response.")
                     .font(Retro.body(12)).foregroundStyle(Retro.ink)
@@ -92,25 +103,74 @@ struct AwayMessageView: View {
 
 struct ProfileEditorView: View {
     @EnvironmentObject var store: ChatStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeWindow) private var dismiss
     @State private var text = ""
+    @State private var interests = ""
+    @State private var location = ""
+    @State private var iconItem: PhotosPickerItem?
+    @State private var working = false
 
     var body: some View {
-        RetroSheet(title: "My Profile", icon: "person.text.rectangle") {
+        Pane(title: "My Profile", icon: "person.text.rectangle") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("This is what buddies see when they Get Info on you.").font(Retro.body(12)).foregroundStyle(Retro.ink)
+                Text("Buddy Icon").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
+                HStack(spacing: 10) {
+                    BuddyIcon(uid: store.myUID, size: 56)
+                    VStack(alignment: .leading, spacing: 6) {
+                        PhotosPicker(selection: $iconItem, matching: .images) {
+                            Text("Choose Picture").font(Retro.body(12)).foregroundStyle(Retro.ink)
+                                .padding(.horizontal, 10).padding(.vertical, 5).background(Retro.face).bevel()
+                        }
+                        if store.icons[store.myUID] != nil {
+                            Button("Remove") { Task { await store.setMyIcon(nil) } }.buttonStyle(RetroButtonStyle())
+                        }
+                    }
+                    if working { ProgressView() }
+                }
+                Text("Shows next to your name on buddies' lists and in IMs.").font(Retro.body(10)).foregroundStyle(Retro.dark)
+
+                Text("Profile").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
+                Text("What buddies see when they Get Info on you. Links work.").font(Retro.body(11)).foregroundStyle(Retro.ink)
                 TextEditor(text: $text)
                     .font(Retro.body(14)).foregroundStyle(Retro.ink)
                     .scrollContentBackground(.hidden)
-                    .frame(height: 200).padding(4).background(Retro.field).bevel(sunken: true)
+                    .frame(height: 140).padding(4).background(Retro.field).bevel(sunken: true)
+
+                Text("Member Directory").font(Retro.titleFont(12)).foregroundStyle(Retro.ink)
+                RetroField(label: "Location", text: $location)
+                RetroField(label: "Interests (e.g. skating, punk, anime)", text: $interests)
+
                 HStack {
                     Button("Cancel") { dismiss() }.buttonStyle(RetroButtonStyle())
                     Spacer()
-                    Button("Save") { Task { await store.setProfile(text); dismiss() } }.buttonStyle(RetroButtonStyle(bold: true))
+                    Button("Save") {
+                        Task {
+                            await store.setProfile(text)
+                            await store.setDirectoryInfo(interests: interests, location: location)
+                            dismiss()
+                        }
+                    }
+                    .buttonStyle(RetroButtonStyle(bold: true))
                 }
             }
         }
-        .onAppear { text = store.users[store.myUID]?.profile ?? "" }
+        .onAppear {
+            let me = store.users[store.myUID]
+            text = me?.profile ?? ""
+            interests = me?.interests ?? ""
+            location = me?.location ?? ""
+        }
+        .onChange(of: iconItem) { _, item in
+            guard let item else { return }
+            working = true
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
+                    await store.setMyIcon(img)
+                }
+                iconItem = nil
+                working = false
+            }
+        }
     }
 }
 
@@ -118,14 +178,14 @@ struct ProfileEditorView: View {
 
 struct AddBuddyView: View {
     @EnvironmentObject var store: ChatStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeWindow) private var dismiss
     @State private var screenName = ""
     @State private var groupID: UUID?
     @State private var newGroup = ""
     @State private var message: String?
 
     var body: some View {
-        RetroSheet(title: "Add a Buddy", icon: "person.badge.plus") {
+        Pane(title: "Add a Buddy", icon: "person.badge.plus") {
             VStack(alignment: .leading, spacing: 14) {
                 RetroField(label: "Buddy's Screen Name", text: $screenName)
                 Text("Add to group").font(Retro.body(12)).foregroundStyle(Retro.ink)
@@ -136,7 +196,7 @@ struct AddBuddyView: View {
                 .padding(4).background(Retro.field).bevel(sunken: true)
                 if let message { Text(message).font(Retro.body(12)).foregroundStyle(message.hasPrefix("Added") ? .green : .red) }
                 HStack {
-                    Button("Close") { dismiss() }.buttonStyle(RetroButtonStyle())
+                    Button("Send IM") { sendIM() }.buttonStyle(RetroButtonStyle()).disabled(screenName.isEmpty)
                     Spacer()
                     Button("Add Buddy") { add() }.buttonStyle(RetroButtonStyle(bold: true)).disabled(screenName.isEmpty)
                 }
@@ -155,6 +215,20 @@ struct AddBuddyView: View {
             }
         }
         .onAppear { groupID = store.groups.first?.id }
+    }
+
+    private func sendIM() {
+        message = nil
+        Task {
+            guard let uid = await store.lookUp(screenName: screenName) else {
+                message = "No one has the screen name \"\(screenName)\"."
+                return
+            }
+            guard uid != store.myUID else { message = "That's you!"; return }
+            store.acceptedStrangers.insert(uid)
+            store.windows.open(.im(uid))
+            screenName = ""
+        }
     }
 
     private func add() {
@@ -176,16 +250,19 @@ struct AddBuddyView: View {
 
 struct SettingsView: View {
     @EnvironmentObject var store: ChatStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeWindow) private var dismiss
     @AppStorage("theme") private var theme: RetroTheme = .ocean
     @AppStorage("soundsOn") private var soundsOn = true
     @State private var logoItem: PhotosPickerItem?
+    @State private var wallpaperItem: PhotosPickerItem?
+    @AppStorage("wallpaper") private var wallpaper: Wallpaper = .teal
+    @AppStorage("wallpaperStamp") private var wallpaperStamp = 0
     @State private var pickingSlot: Sounds.Slot?
     @State private var note: String?
     @State private var refresh = 0
 
     var body: some View {
-        RetroSheet(title: "Setup", icon: "gearshape.fill") {
+        Pane(title: "Setup", icon: "gearshape.fill") {
             VStack(alignment: .leading, spacing: 16) {
                 section("Window Color") {
                     HStack {
@@ -197,6 +274,26 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                    }
+                }
+
+                section("Desktop Wallpaper") {
+                    ForEach(Wallpaper.allCases.filter { $0 != .custom }) { w in
+                        Button { wallpaper = w } label: {
+                            HStack {
+                                Image(systemName: wallpaper == w ? "largecircle.fill.circle" : "circle")
+                                Text(w.label)
+                            }
+                            .font(Retro.body(13)).foregroundStyle(Retro.ink)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    PhotosPicker(selection: $wallpaperItem, matching: .images) {
+                        HStack {
+                            Image(systemName: wallpaper == .custom ? "largecircle.fill.circle" : "circle")
+                            Text("My Picture…")
+                        }
+                        .font(Retro.body(13)).foregroundStyle(Retro.ink)
                     }
                 }
 
@@ -230,7 +327,7 @@ struct SettingsView: View {
                                 .buttonStyle(RetroButtonStyle())
                         }
                     }
-                    Text("Replaces the BuddyChat buddy on the sign-on screen and Buddy List.").font(Retro.body(11)).foregroundStyle(Retro.dark)
+                    Text("Replaces the BuddyChat buddy on the sign-on screen and taskbar.").font(Retro.body(11)).foregroundStyle(Retro.dark)
                 }
 
                 if let note { Text(note).font(Retro.body(12)).foregroundStyle(.red) }
@@ -255,6 +352,18 @@ struct SettingsView: View {
                 }
             }
             .ignoresSafeArea()
+        }
+        .onChange(of: wallpaperItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data),
+                   let jpeg = img.jpegData(compressionQuality: 0.85) {
+                    try? jpeg.write(to: Wallpaper.customURL)
+                    wallpaper = .custom
+                    wallpaperStamp += 1
+                }
+                wallpaperItem = nil
+            }
         }
         .onChange(of: logoItem) { _, item in
             guard let item else { return }
@@ -283,39 +392,41 @@ struct SettingsView: View {
 
 struct RoomsView: View {
     @EnvironmentObject var store: ChatStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeWindow) private var dismiss
     @State private var room = ""
-    @State private var joined: String?
 
     var body: some View {
-        if let joined {
-            ChatRoomView(room: joined) { self.joined = nil }
-        } else {
-            RetroSheet(title: "Chat Rooms", icon: "person.3.fill") {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Type a room name to join it. If it doesn't exist yet, it's created. Give friends the same name to chat together.")
-                        .font(Retro.body(12)).foregroundStyle(Retro.ink)
-                    RetroField(label: "Room name", text: $room)
-                    HStack {
-                        Button("Close") { dismiss() }.buttonStyle(RetroButtonStyle())
-                        Spacer()
-                        Button("Join") {
-                            let key = AuthService.normalize(room)
-                            if !key.isEmpty { joined = key }
-                        }
+        Pane(title: "Chat Rooms", icon: "person.3.fill") {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Type a room name to join it. If it doesn't exist yet, it's created. Use Invite inside the room to bring buddies in.")
+                    .font(Retro.body(12)).foregroundStyle(Retro.ink)
+                RetroField(label: "Room name", text: $room)
+                    .onSubmit(join)
+                HStack {
+                    Button("Close") { dismiss() }.buttonStyle(RetroButtonStyle())
+                    Spacer()
+                    Button("Join", action: join)
                         .buttonStyle(RetroButtonStyle(bold: true))
                         .disabled(AuthService.normalize(room).isEmpty)
-                    }
                 }
             }
         }
+    }
+
+    private func join() {
+        let key = AuthService.normalize(room)
+        guard !key.isEmpty else { return }
+        store.windows.open(.room(key))
+        dismiss()
     }
 }
 
 struct ChatRoomView: View {
     let room: String
-    let onLeave: () -> Void
     @EnvironmentObject var store: ChatStore
+    @Environment(\.closeWindow) private var closeWindow
+    @State private var inviting = false
+    @State private var loaded = false
     @State private var messages: [ChatMessage] = []
     @State private var members: [String: Double] = [:]
     @State private var draft = ""
@@ -328,53 +439,55 @@ struct ChatRoomView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(red: 0.0, green: 0.5, blue: 0.5).ignoresSafeArea()
-            RetroWindow(title: "Chat Room: \(room)", icon: "person.3.fill") {
-                VStack(spacing: 8) {
-                    Text("In the room: " + (here.isEmpty ? "just you" : here.map { store.name($0) }.joined(separator: ", ")))
-                        .font(Retro.body(11)).foregroundStyle(Retro.ink).frame(maxWidth: .infinity, alignment: .leading)
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 4) {
-                                ForEach(messages) { m in
-                                    (Text((m.fromName ?? store.name(m.from)) + ": ").font(Retro.titleFont(13))
-                                        .foregroundColor(m.from == store.myUID ? Retro.me : Retro.them)
-                                     + Text(m.text).font(Retro.body(14)).foregroundColor(Retro.ink))
-                                        .id(m.id)
-                                }
-                            }
-                            .padding(8)
-                        }
-                        .background(Retro.field).bevel(sunken: true)
-                        .onChange(of: messages.last?.id) { _, last in if let last { proxy.scrollTo(last, anchor: .bottom) } }
-                    }
-                    HStack {
-                        TextField("", text: $draft).font(Retro.body(14)).foregroundStyle(Retro.ink)
-                            .padding(6).background(Retro.field).bevel(sunken: true)
-                            .onSubmit(send)
-                        Button("Send", action: send).buttonStyle(RetroButtonStyle(bold: true))
-                    }
-                    HStack {
-                        Spacer()
-                        Button("Leave Room") { leave() }.buttonStyle(RetroButtonStyle())
-                    }
-                }
-                .padding(10)
+        VStack(spacing: 6) {
+            HStack(alignment: .top) {
+                Text("Here: " + (here.isEmpty ? "just you" : here.map { store.name($0) }.joined(separator: ", ")))
+                    .font(Retro.body(10)).foregroundStyle(Retro.ink).lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Invite") { inviting = true }.buttonStyle(RetroButtonStyle())
+                Button("Leave") { leave() }.buttonStyle(RetroButtonStyle())
             }
-            .padding(16)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(messages) { m in
+                            (Text((m.fromName ?? store.name(m.from)) + ": ").font(Retro.titleFont(12))
+                                .foregroundColor(m.from == store.myUID ? Retro.me : Retro.them)
+                             + RichText.text(m.text, style: TextStyle()))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .id(m.id)
+                        }
+                    }
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Retro.field).bevel(sunken: true)
+                .onChange(of: messages.last?.id) { _, last in if let last { proxy.scrollTo(last, anchor: .bottom) } }
+            }
+            HStack {
+                TextField("", text: $draft).font(Retro.body(14)).foregroundStyle(Retro.ink)
+                    .padding(5).background(Retro.field).bevel(sunken: true)
+                    .onSubmit(send)
+                Button("Send", action: send).buttonStyle(RetroButtonStyle(bold: true))
+            }
         }
+        .padding(6)
         .onAppear(perform: join)
-        .onDisappear(perform: stopAll)
+        .onDisappear(perform: leaveQuietly)
+        .sheet(isPresented: $inviting) { InviteBuddiesSheet(room: room) }
     }
 
     private func join() {
         streams = [
             store.db.listen("rooms/\(room)/messages", query: ["orderBy": "\"$key\"", "limitToLast": "100"]) { value in
-                messages = ((value as? [String: Any]) ?? [:]).compactMap { k, v in
+                let next = ((value as? [String: Any]) ?? [:]).compactMap { k, v in
                     (v as? [String: Any]).map { ChatMessage(id: k, dict: $0) }
                 }.sorted { $0.id < $1.id }
-                Sounds.shared.play(.receive)
+                if loaded, let last = next.last, last.id != messages.last?.id, last.from != store.myUID {
+                    Sounds.shared.play(.receive)
+                }
+                messages = next
+                loaded = true
             },
             store.db.listen("rooms/\(room)/members") { value in
                 members = ((value as? [String: Any]) ?? [:]).compactMapValues { ($0 as? NSNumber)?.doubleValue }
@@ -405,9 +518,13 @@ struct ChatRoomView: View {
         timer?.invalidate()
     }
 
-    private func leave() {
+    private func leaveQuietly() {
         stopAll()
         Task { try? await store.db.delete("rooms/\(room)/members/\(store.myUID)") }
-        onLeave()
+    }
+
+    private func leave() {
+        leaveQuietly()
+        closeWindow()
     }
 }

@@ -53,6 +53,7 @@ jobs:
           path: BuddyChat.ipa
 
       - name: Publish release (easy download link)
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

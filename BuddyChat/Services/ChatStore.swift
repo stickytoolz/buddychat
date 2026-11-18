@@ -24,6 +24,8 @@ final class ChatStore: ObservableObject {
     @Published var invites: [ChatInvite] = []
     @Published var caught: [String] = []                         // strangers waiting in the IM Catcher
     @Published var invisible = false
+    @Published var pounceFor: String? = nil                      // buddy to pre-fill in the Buddy Pounce window
+    var acceptedStrangers: Set<String> = []                      // strangers you let through the IM Catcher
     let windows = WindowManager()
     var iconCache: [String: String] = [:]
     var lastSendAt: Date = .distantPast
@@ -179,6 +181,7 @@ final class ChatStore: ObservableObject {
         openConversations = []
         windows.closeAll()
         caught = []; invites = []; icons = [:]; iconCache = [:]; warnings = [:]
+        acceptedStrangers = []; pounceFor = nil
         myUID = ""
         phase = .signedOut
     }
@@ -279,12 +282,14 @@ final class ChatStore: ObservableObject {
             let isBuddy = allBuddyIDs.contains(entry.from)
             if !isBuddy && prefs.privacy == .buddiesOnly { continue }
             Sounds.shared.play(.receive)
-            if !isBuddy && prefs.imCatcher && windows.find(.im(entry.from)) == nil {
+            if !isBuddy && prefs.imCatcher && !acceptedStrangers.contains(entry.from) && windows.find(.im(entry.from)) == nil {
                 if !caught.contains(entry.from) { caught.append(entry.from) }
-                windows.open(.catcher)
+                windows.open(.catcher, focus: windows.keyboardHeight == 0)
             } else {
-                windows.open(.im(entry.from), focus: windows.find(.im(entry.from)) == nil)
-                if let w = windows.find(.im(entry.from)), w.minimized { windows.flash(w.id) }
+                // A new IM pops up in front, unless you're typing somewhere else; then it waits behind and flashes.
+                let isNew = windows.find(.im(entry.from)) == nil
+                windows.open(.im(entry.from), focus: isNew && windows.keyboardHeight == 0)
+                if let w = windows.find(.im(entry.from)) { windows.flash(w.id) }
             }
             sendAutoReplyIfAway(to: entry.from, conv: conv)
         }
@@ -319,7 +324,7 @@ final class ChatStore: ObservableObject {
                     return ChatMessage(id: k, dict: d)
                 }.sorted { $0.id < $1.id }
                 self.messages[conv] = list
-                if self.openConversations.contains(conv) { self.markRead(conv) }
+                if self.isShowing(conv) { self.markRead(conv) }
             }
             streams["f.\(conv)"] = db.listen("filemeta/\(conv)") { [weak self] value in
                 guard let self else { return }
@@ -340,6 +345,13 @@ final class ChatStore: ObservableObject {
             }
         }
         markRead(conv)
+    }
+
+    /// True when that conversation's IM window is open and not minimized.
+    func isShowing(_ conv: String) -> Bool {
+        guard openConversations.contains(conv) else { return false }
+        let other = conv.split(separator: "_").map(String.init).first { $0 != myUID } ?? myUID
+        return windows.find(.im(other)).map { !$0.minimized } ?? false
     }
 
     func close(_ conv: String) {
@@ -485,6 +497,7 @@ final class ChatStore: ObservableObject {
     /// People who messaged you but aren't on your Buddy List.
     var strangers: [String] {
         let buddies = allBuddyIDs
-        return inbox.values.filter { !buddies.contains($0.with) && $0.with != myUID }.sorted { $0.ts > $1.ts }.map(\.with)
+        if prefs.privacy == .buddiesOnly { return [] }
+        return inbox.values.filter { !buddies.contains($0.with) && $0.with != myUID && !blocked.contains($0.with) }.sorted { $0.ts > $1.ts }.map(\.with)
     }
 }

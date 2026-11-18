@@ -79,6 +79,36 @@
           ".write": "auth != null && $conv.contains(auth.uid)"
         }
       }
+    },
+    "prefs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "icons": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.isString() && newData.val().length < 60000"
+      }
+    },
+    "warnings": {
+      ".read": "auth != null",
+      "$target": {
+        "$from": {
+          ".write": "auth != null && auth.uid === $from && $target !== $from && newData.exists()",
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "invites": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$invite": {
+          ".write": "auth != null && (auth.uid === $uid || (!data.exists() && newData.child('from').val() === auth.uid && !root.child('blocks/' + $uid + '/' + auth.uid).exists()))"
+        }
+      }
     }
   }
 }

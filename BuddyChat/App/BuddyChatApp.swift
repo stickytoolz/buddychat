@@ -28,7 +28,7 @@ struct RootView: View {
             } else {
                 switch store.phase {
                 case .signedOut, .signingOn: SignOnView()
-                case .signedOn: BuddyListView()
+                case .signedOn: DesktopView(wm: store.windows)
                 }
             }
         }
