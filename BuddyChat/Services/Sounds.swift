@@ -61,6 +61,35 @@ final class Sounds {
         p.play()
     }
 
+    // MARK: Per-buddy sign-on sounds
+
+    static func buddySoundURL(_ uid: String) -> URL? {
+        let files = (try? FileManager.default.contentsOfDirectory(at: skinFolder, includingPropertiesForKeys: nil)) ?? []
+        return files.first { $0.deletingPathExtension().lastPathComponent == "buddy_\(uid)" }
+    }
+
+    private var buddyPlayer: AVAudioPlayer?
+
+    func playSignOn(for uid: String) {
+        guard enabled else { return }
+        if let url = Self.buddySoundURL(uid), let p = try? AVAudioPlayer(contentsOf: url) {
+            buddyPlayer = p
+            p.play()
+        } else {
+            play(.signOn)
+        }
+    }
+
+    static func setBuddySound(_ uid: String, from source: URL) throws {
+        if let old = buddySoundURL(uid) { try? FileManager.default.removeItem(at: old) }
+        let ext = source.pathExtension.isEmpty ? "m4a" : source.pathExtension
+        try FileManager.default.copyItem(at: source, to: skinFolder.appendingPathComponent("buddy_\(uid).\(ext)"))
+    }
+
+    static func resetBuddySound(_ uid: String) {
+        if let old = buddySoundURL(uid) { try? FileManager.default.removeItem(at: old) }
+    }
+
     /// Copies a file the person picked into the skin folder for that sound.
     static func setCustom(_ slot: Slot, from source: URL) throws {
         if let old = customURL(slot) { try? FileManager.default.removeItem(at: old) }

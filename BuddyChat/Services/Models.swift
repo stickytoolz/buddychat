@@ -13,6 +13,9 @@ struct UserInfo: Identifiable, Equatable {
     var lastSeen: Double    // ms since 1970
     var idleSince: Double?
     var signedOn: Bool
+    var invisible: Bool
+    var interests: String
+    var location: String
 
     init(uid: String, dict: [String: Any]) {
         id = uid
@@ -23,10 +26,13 @@ struct UserInfo: Identifiable, Equatable {
         lastSeen = (dict["lastSeen"] as? NSNumber)?.doubleValue ?? 0
         idleSince = (dict["idleSince"] as? NSNumber)?.doubleValue
         signedOn = dict["signedOn"] as? Bool ?? false
+        invisible = dict["invisible"] as? Bool ?? false
+        interests = dict["interests"] as? String ?? ""
+        location = dict["location"] as? String ?? ""
     }
 
     func presence(now: Date = Date()) -> Presence {
-        guard signedOn else { return .offline }
+        guard signedOn, !invisible else { return .offline }
         let age = now.timeIntervalSince1970 * 1000 - lastSeen
         if idleSince == nil && age < 150_000 { return awayMessage != nil ? .away : .online }
         if idleSince != nil && age < 2 * 3600_000 { return awayMessage != nil ? .away : .idle }
@@ -82,6 +88,7 @@ struct ChatMessage: Identifiable, Equatable {
     let isAuto: Bool
     let fromName: String?
     let file: FileOffer?
+    let rich: [RichSegment]?
 
     init(id: String, dict: [String: Any]) {
         self.id = id
@@ -92,6 +99,7 @@ struct ChatMessage: Identifiable, Equatable {
         isAuto = dict["auto"] as? Bool ?? false
         fromName = dict["name"] as? String
         file = (dict["file"] as? [String: Any]).flatMap(FileOffer.init(dict:))
+        rich = (dict["rich"] as? [[String: Any]])?.map(RichSegment.init(dict:))
     }
 
     var date: Date { Date(timeIntervalSince1970: ts / 1000) }
@@ -123,4 +131,57 @@ extension Color {
 
 func conversationID(_ a: String, _ b: String) -> String {
     [a, b].sorted().joined(separator: "_")
+}
+
+
+/// One run of text with its own style (for per-word formatting).
+struct RichSegment: Equatable {
+    var text: String
+    var style: TextStyle
+
+    init(text: String, style: TextStyle) {
+        self.text = text
+        self.style = style
+    }
+
+    init(dict: [String: Any]) {
+        text = dict["t"] as? String ?? ""
+        style = TextStyle(dict: dict["s"] as? [String: Any])
+    }
+
+    var dict: [String: Any] { ["t": text, "s": style.dict] }
+}
+
+/// Things that live only on your account: nicknames for buddies, pounces, privacy.
+struct BuddyPounce: Codable, Identifiable, Equatable {
+    enum Trigger: String, Codable, CaseIterable, Identifiable {
+        case signsOn, returnsFromAway, returnsFromIdle
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .signsOn: return "Signs on"
+            case .returnsFromAway: return "Returns from away"
+            case .returnsFromIdle: return "Returns from idle"
+            }
+        }
+    }
+    var id = UUID()
+    var buddy: String
+    var triggers: Set<Trigger> = [.signsOn]
+    var openIM = true
+    var sendMessage = ""
+    var playSound = true
+    var keep = false
+}
+
+struct AccountPrefs: Codable, Equatable {
+    enum Privacy: String, Codable, CaseIterable, Identifiable {
+        case everyone, buddiesOnly
+        var id: String { rawValue }
+        var label: String { self == .everyone ? "Anyone can IM me" : "Only people on my Buddy List" }
+    }
+    var aliases: [String: String] = [:]
+    var pounces: [BuddyPounce] = []
+    var privacy: Privacy = .everyone
+    var imCatcher = true
 }

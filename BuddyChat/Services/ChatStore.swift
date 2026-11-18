@@ -16,8 +16,17 @@ final class ChatStore: ObservableObject {
     @Published var messages: [String: [ChatMessage]] = [:]
     @Published var typing: [String: Set<String>] = [:]
     @Published var awayMessage: String? = nil
-    @Published var openConversation: String? = nil
+    @Published var openConversations: Set<String> = []
     @Published var banner: String? = nil
+    @Published var prefs = AccountPrefs()
+    @Published var icons: [String: UIImage] = [:]
+    @Published var warnings: [String: [String: Double]] = [:]   // person → who warned them → when
+    @Published var invites: [ChatInvite] = []
+    @Published var caught: [String] = []                         // strangers waiting in the IM Catcher
+    @Published var invisible = false
+    let windows = WindowManager()
+    var iconCache: [String: String] = [:]
+    var lastSendAt: Date = .distantPast
     @Published var flash: [String: Date] = [:]   // buddy uid → time they signed on/off (for the door icon)
     @Published var now = Date()
     @Published var fileMeta: [String: [String: FileMeta]] = [:]   // conv → transfer id → status
@@ -135,6 +144,8 @@ final class ChatStore: ObservableObject {
         knownPresence = [:]
         let me = try await db.get("users/\(uid)") as? [String: Any] ?? [:]
         myScreenName = me["screenName"] as? String ?? lastScreenName
+        invisible = me["invisible"] as? Bool ?? false
+        await loadPrefs()
         let away = me["away"] as? String ?? ""
         awayMessage = away.isEmpty ? nil : away
         if let raw = try? await db.get("buddylists/\(uid)") as? String,
@@ -165,12 +176,19 @@ final class ChatStore: ObservableObject {
             saveSession()
         }
         users = [:]; inbox = [:]; messages = [:]; typing = [:]; groups = []
-        openConversation = nil
+        openConversations = []
+        windows.closeAll()
+        caught = []; invites = []; icons = [:]; iconCache = [:]; warnings = [:]
         myUID = ""
         phase = .signedOut
     }
 
     // MARK: Live data
+
+    func registerStream(_ key: String, _ q: LiveQuery) {
+        streams[key]?.stop()
+        streams[key] = q
+    }
 
     private func startStreams() {
         streams["users"] = db.listen("users") { [weak self] value in self?.handleUsers(value) }
@@ -178,6 +196,7 @@ final class ChatStore: ObservableObject {
         streams["blocks"] = db.listen("blocks/\(myUID)") { [weak self] value in
             self?.blocked = Set((value as? [String: Any])?.keys.map { $0 } ?? [])
         }
+        startFeatureStreams()
     }
 
     private func startTimers() {
@@ -223,7 +242,7 @@ final class ChatStore: ObservableObject {
         usersLoaded = true
     }
 
-    private var allBuddyIDs: Set<String> { Set(groups.flatMap(\.members)) }
+    var allBuddyIDs: Set<String> { Set(groups.flatMap(\.members)) }
 
     private func detectPresenceChanges() {
         let buddies = allBuddyIDs
@@ -232,14 +251,15 @@ final class ChatStore: ObservableObject {
             let p = u.presence(now: now)
             let before = knownPresence[uid]
             knownPresence[uid] = p
-            guard usersLoaded, let before else { continue }
+            guard usersLoaded, let before, before != p else { continue }
             if before == .offline && p != .offline {
                 flash[uid] = now
-                Sounds.shared.play(.signOn)
+                Sounds.shared.playSignOn(for: uid)
             } else if before != .offline && p == .offline {
                 flash[uid] = now
                 Sounds.shared.play(.signOff)
             }
+            presenceChanged(uid, from: before, to: p)
         }
     }
 
@@ -256,9 +276,15 @@ final class ChatStore: ObservableObject {
         guard inboxLoaded else { return }
         for (conv, entry) in result where entry.from != myUID && entry.ts > (old[conv]?.ts ?? 0) {
             if blocked.contains(entry.from) { continue }
+            let isBuddy = allBuddyIDs.contains(entry.from)
+            if !isBuddy && prefs.privacy == .buddiesOnly { continue }
             Sounds.shared.play(.receive)
-            if openConversation != conv {
-                banner = "\(users[entry.from]?.screenName ?? "Someone"): \(entry.preview)"
+            if !isBuddy && prefs.imCatcher && windows.find(.im(entry.from)) == nil {
+                if !caught.contains(entry.from) { caught.append(entry.from) }
+                windows.open(.catcher)
+            } else {
+                windows.open(.im(entry.from), focus: windows.find(.im(entry.from)) == nil)
+                if let w = windows.find(.im(entry.from)), w.minimized { windows.flash(w.id) }
             }
             sendAutoReplyIfAway(to: entry.from, conv: conv)
         }
@@ -284,7 +310,7 @@ final class ChatStore: ObservableObject {
 
     func open(with uid: String) {
         let conv = conversationID(myUID, uid)
-        openConversation = conv
+        openConversations.insert(conv)
         if streams["m.\(conv)"] == nil {
             streams["m.\(conv)"] = db.listen("messages/\(conv)", query: ["orderBy": "\"$key\"", "limitToLast": "150"]) { [weak self] value in
                 guard let self else { return }
@@ -293,7 +319,7 @@ final class ChatStore: ObservableObject {
                     return ChatMessage(id: k, dict: d)
                 }.sorted { $0.id < $1.id }
                 self.messages[conv] = list
-                if self.openConversation == conv { self.markRead(conv) }
+                if self.openConversations.contains(conv) { self.markRead(conv) }
             }
             streams["f.\(conv)"] = db.listen("filemeta/\(conv)") { [weak self] value in
                 guard let self else { return }
@@ -317,7 +343,7 @@ final class ChatStore: ObservableObject {
     }
 
     func close(_ conv: String) {
-        if openConversation == conv { openConversation = nil }
+        openConversations.remove(conv)
         streams["t.\(conv)"]?.stop()
         streams["t.\(conv)"] = nil
         streams["m.\(conv)"]?.stop()
@@ -326,13 +352,25 @@ final class ChatStore: ObservableObject {
         streams["f.\(conv)"] = nil
     }
 
-    func send(_ text: String, to uid: String, style: TextStyle, auto: Bool = false, file: [String: Any]? = nil) async throws {
+    func send(_ text: String, to uid: String, style: TextStyle, auto: Bool = false, file: [String: Any]? = nil,
+              rich: [RichSegment]? = nil) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if !auto && file == nil {
+            // Being warned slows you down: at 50%+ you have to wait between messages.
+            let level = warningLevel(myUID)
+            if level >= 50 {
+                let wait = Double(level) / 10
+                let since = Date().timeIntervalSince(lastSendAt)
+                if since < wait { throw AuthError.message("Your warning level is \(level)%. Wait \(Int(wait - since) + 1) seconds before sending again.") }
+            }
+            lastSendAt = Date()
+        }
         let conv = conversationID(myUID, uid)
         var msg: [String: Any] = ["from": myUID, "name": myScreenName, "text": trimmed,
                                   "ts": Database.serverTimestamp, "style": style.dict]
         if auto { msg["auto"] = true }
+        if let rich, rich.count > 0 { msg["rich"] = rich.map(\.dict) }
         if let file { msg["file"] = file }
         try await db.push("messages/\(conv)", msg)
         let preview = String(trimmed.prefix(80))
@@ -437,7 +475,12 @@ final class ChatStore: ObservableObject {
         if block { try? await db.put("blocks/\(myUID)/\(uid)", true) } else { try? await db.delete("blocks/\(myUID)/\(uid)") }
     }
 
-    func name(_ uid: String) -> String { users[uid]?.screenName ?? "…" }
+    /// Your nickname for them if you set one, otherwise their screen name.
+    func name(_ uid: String) -> String {
+        if let alias = prefs.aliases[uid], !alias.isEmpty { return alias }
+        return users[uid]?.screenName ?? "…"
+    }
+    func realName(_ uid: String) -> String { users[uid]?.screenName ?? "…" }
 
     /// People who messaged you but aren't on your Buddy List.
     var strangers: [String] {
