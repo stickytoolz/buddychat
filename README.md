@@ -13,6 +13,19 @@ A throwback instant messenger for iPhone with an early-2000s desktop feel.
 - **Chat rooms:** join any room by name.
 - **Block:** stop someone from messaging you.
 - **Skins:** choose window colors, swap any sound for a file of your own, and pick your own picture.
+- **Desktop:** IMs open as square windows you can drag, resize, minimize and stack, with a taskbar; the Buddy List is docked on the side.
+- **Buddy icons:** a picture next to your name on buddies' lists and in IMs.
+- **Smileys and links:** `:-)` `;-)` `:-D` `<3` and friends turn into little faces, and links are tappable.
+- **Per-word formatting:** change the font or color partway through a message.
+- **IM backgrounds** per conversation, and **per-buddy sign-on sounds**.
+- **Nicknames:** rename a buddy on your own list.
+- **Away messages from the list:** tap the note icon next to a buddy to read it.
+- **Buddy Pounce:** pop up an IM, play a sound or send a message when a buddy signs on or comes back.
+- **Warn:** raises someone's warning level; at 50%+ they have to wait between messages.
+- **Message history** with search, and a **member directory** searchable by interests and location.
+- **Privacy:** invisible mode, buddies-only IMs, and an **IM Catcher** for strangers.
+- **Chat invites:** invite buddies into a chat room.
+- **File transfers** up to 10 MB with accept/decline.
 
 ## Download
 
